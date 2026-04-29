@@ -6,8 +6,9 @@ import {
   ShieldAlert, AlertCircle, CheckCircle, Search, BookOpen,
   ArrowUpRight, ArrowDownRight, Lightbulb, Clock, BarChart2, Copy,
   TrendingUp, LayoutDashboard, PieChart, Settings, MessageSquare,
-  FileText
+  FileText, LogOut
 } from 'lucide-react';
+import Login from './Login';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
@@ -83,6 +84,20 @@ export default function App() {
   const [prediction, setPrediction] = useState("");
   const [activeTab, setActiveTab] = useState("Overview");
   const [activePage, setActivePage] = useState("Dashboard");
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  // Check auth on mount
+  useEffect(() => {
+    const user = localStorage.getItem("user");
+    if (user) {
+      setIsAuthenticated(true);
+    }
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem("user");
+    setIsAuthenticated(false);
+  };
 
   // Initial Data Fetch
   useEffect(() => {
@@ -224,6 +239,10 @@ export default function App() {
     recognition.start();
   };
 
+  if (!isAuthenticated) {
+    return <Login onLogin={() => setIsAuthenticated(true)} />;
+  }
+
   if (!statsData || courses.length === 0 || !selectedCourse || !details) {
     return (
       <div className="min-h-screen bg-[#0b0f1a] flex items-center justify-center text-purple-400">
@@ -279,6 +298,13 @@ export default function App() {
                Chat Now
              </button>
           </div>
+          <button 
+            onClick={handleLogout}
+            className="w-full mt-3 flex items-center justify-center gap-2 py-2 px-4 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/20 transition-all text-xs font-bold"
+          >
+            <LogOut className="w-4 h-4" />
+            Logout Session
+          </button>
         </div>
       </aside>
 
