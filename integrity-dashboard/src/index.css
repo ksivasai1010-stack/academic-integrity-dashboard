@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom Dark Theme */
+body {
+  @apply bg-[#0b0f1a] text-white;
+}

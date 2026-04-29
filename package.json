@@ -1,0 +1,13 @@
+{
+  "name": "academic-integrity-dashboard-root",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "cd backend && node server.js",
+    "client": "cd integrity-dashboard && npm start",
+    "install-all": "cd backend && npm install && cd ../integrity-dashboard && npm install"
+  },
+  "dependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
