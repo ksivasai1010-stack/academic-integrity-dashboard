@@ -176,19 +176,51 @@ export default function App() {
     if (!file) return;
     Papa.parse(file, {
       header: true,
-      complete: (result) => setCsvData(result.data),
+      complete: (result) => {
+        console.log("CSV Raw Data:", result.data);
+        setCsvData(result.data);
+      },
     });
   };
 
   const handleCSVAnalysis = async () => {
     if (!csvData) return;
+    console.log("Analyzing CSV...");
+    setLoadingAI(true);
+    setActivePage('AI Insights');
+    setActiveTab('AI Assistant');
+
+    const cleanData = csvData.map((row) => ({
+      course: row.course || row.Course || "Unknown",
+      score: Number(row.score || row.Score || 0),
+      late: Number(row.late || row.Late || 0),
+      duplicate: Number(row.duplicate || row.Duplicate || 0)
+    })).filter(row => row.course !== "Unknown");
+
+    const prompt = `
+You are an academic integrity analyst.
+
+Analyze this dataset:
+${JSON.stringify(cleanData)}
+
+Detect:
+- Cheating patterns
+- Duplicate scores
+- Late submissions
+- Risk levels (Low/Medium/High)
+
+Give clear explanation and specific course insights.
+`;
+
     try {
-      const res = await axios.post(`${API_URL}/analyze`, csvData);
+      // Sending both data and the custom prompt
+      const res = await axios.post(`${API_URL}/analyze`, { data: cleanData, prompt });
       setAiInsights(res.data.insights);
     } catch (err) {
       console.error(err);
-      setAiInsights("Failed to analyze CSV data");
+      setAiInsights("⚠️ Analysis Failed (Offline Mode fallback)\n\nDataset received but AI engine unreachable.\nDetected " + cleanData.length + " records.\n\nSummary:\n- Avg Score: " + (cleanData.reduce((a,b)=>a+b.score,0)/cleanData.length).toFixed(1) + "%\n- High Risk Flagged: " + cleanData.filter(r=>r.duplicate > 0).length);
     }
+    setLoadingAI(false);
   };
 
   const handlePrediction = async () => {

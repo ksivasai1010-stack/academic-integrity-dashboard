@@ -82,8 +82,10 @@ app.get('/api/course/:id', (req, res) => {
 // AI Endpoints
 app.post('/api/analyze', async (req, res) => {
   try {
-    const data = req.body;
-    const insights = await generateInsights(data);
+    const payload = req.body;
+    const data = payload.data || payload;
+    const prompt = payload.prompt || null;
+    const insights = await generateInsights(data, prompt);
     res.json({ insights });
   } catch (err) {
     console.error(err);

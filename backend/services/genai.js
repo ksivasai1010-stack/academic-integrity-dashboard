@@ -6,10 +6,10 @@ require('dotenv').config();
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "YOUR_API_KEY");
 
 // 🔹 AI Insights
-async function generateInsights(data) {
+async function generateInsights(data, customPrompt = null) {
   const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
-  const prompt = `
+  const prompt = customPrompt || `
 Analyze academic integrity risk:
 
 Data:
