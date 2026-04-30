@@ -118,6 +118,16 @@ export default function App() {
   // Fetch course details when selectedCourse changes
   useEffect(() => {
     if (!selectedCourse) return;
+    
+    // If course has dynamic details from CSV, use them immediately
+    if (selectedCourse.dynamicDetails) {
+      setDetails(selectedCourse.dynamicDetails);
+      setAiInsights("");
+      setChatResponse("");
+      setPrediction("");
+      return;
+    }
+
     const fetchDetails = async () => {
       try {
         const res = await axios.get(`${API_URL}/course/${selectedCourse.id}`);
@@ -174,51 +184,132 @@ export default function App() {
   const handleCSVUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    
+    setLoadingAI(true);
     Papa.parse(file, {
       header: true,
+      skipEmptyLines: true,
       complete: (result) => {
         console.log("CSV Raw Data:", result.data);
-        setCsvData(result.data);
+        const data = result.data;
+        
+        // 1. Clean and Parse Data
+        const cleanData = data.map((row, idx) => {
+          const score = Number(row.score || row.Score || 0);
+          const duplicate = Number(row.duplicate || row.Duplicate || 0);
+          const late = Number(row.late || row.Late || 0);
+          
+          // Determine risk level based on metrics
+          let risk = 'Low';
+          let riskScore = Math.min(100, (duplicate * 40) + (late * 10) + (Math.max(0, 70 - score) / 2));
+          if (riskScore > 70 || duplicate > 0) risk = 'High';
+          else if (riskScore > 40) risk = 'Medium';
+
+          return {
+            id: idx + 1,
+            name: row.course || row.Course || `Course ${idx + 1}`,
+            risk,
+            riskScore: Math.round(riskScore),
+            students: 1, // Aggregating later
+            avgScore: score,
+            trend: 'New',
+            late,
+            duplicate
+          };
+        }).filter(r => r.name !== "Unknown");
+
+        if (cleanData.length === 0) {
+          setLoadingAI(false);
+          return;
+        }
+
+        // 2. Aggregate by Course
+        const courseMap = {};
+        cleanData.forEach(row => {
+          if (!courseMap[row.name]) {
+            courseMap[row.name] = { ...row, students: 0, totalScore: 0, totalLate: 0, totalDup: 0 };
+          }
+          courseMap[row.name].students += 1;
+          courseMap[row.name].totalScore += row.avgScore;
+          courseMap[row.name].totalLate += row.late;
+          courseMap[row.name].totalDup += row.duplicate;
+        });
+
+        const newCourses = Object.values(courseMap).map(c => {
+          const avgScore = Math.round(c.totalScore / c.students);
+          const lateSubRate = ((c.totalLate / c.students) * 100).toFixed(1) + '%';
+          const dupScoreRate = ((c.totalDup / c.students) * 100).toFixed(1) + '%';
+          
+          // Re-evaluate risk for aggregate
+          let risk = 'Low';
+          const riskScore = Math.min(100, ((c.totalDup / c.students) * 100) + (c.totalLate / c.students * 20) + (Math.max(0, 70 - avgScore) / 2));
+          if (riskScore > 60) risk = 'High';
+          else if (riskScore > 30) risk = 'Medium';
+          
+          return {
+            ...c,
+            avgScore,
+            risk,
+            riskScore: Math.round(riskScore),
+            dynamicDetails: {
+              stats: { avgScore: avgScore + '%', stdDev: 'N/A', lateSub: lateSubRate, dupScores: dupScoreRate },
+              insights: `Analysis for ${c.name} shows a ${risk.toLowerCase()} risk profile based on ${c.students} data points.`,
+              recommendations: [ 'Perform further manual review for flagged records.' ],
+              gradeDist: [ { grade: 'Avg', count: c.students } ],
+              timingDist: [ { time: 'Total', submissions: c.students } ],
+              trendData: [ { week: 'Wk 1', performance: avgScore, risk: riskScore } ]
+            }
+          };
+        });
+
+        // 3. Update Dashboard Stats
+        const totalStudents = cleanData.length;
+        const highRisk = newCourses.filter(c => c.risk === 'High').length;
+        const mediumRisk = newCourses.filter(c => c.risk === 'Medium').length;
+        const lowRisk = newCourses.filter(c => c.risk === 'Low').length;
+        const avgRisk = Math.round(newCourses.reduce((a, b) => a + b.riskScore, 0) / newCourses.length);
+
+        setStatsData({ avgRisk, highRisk, mediumRisk, lowRisk, totalStudents });
+        setCourses(newCourses);
+        setSelectedCourse(newCourses[0]);
+        setCsvData(cleanData);
+
+        // 4. Trigger AI Analysis automatically
+        handleCSVAnalysis(cleanData);
       },
     });
   };
 
-  const handleCSVAnalysis = async () => {
-    if (!csvData) return;
+  const handleCSVAnalysis = async (dataToAnalyze) => {
+    // Ensure we are working with an array (prevents event objects from being treated as data)
+    const data = Array.isArray(dataToAnalyze) ? dataToAnalyze : csvData;
+    if (!Array.isArray(data) || data.length === 0) return;
+    
     console.log("Analyzing CSV...");
     setLoadingAI(true);
     setActivePage('AI Insights');
     setActiveTab('AI Assistant');
 
-    const cleanData = csvData.map((row) => ({
-      course: row.course || row.Course || "Unknown",
-      score: Number(row.score || row.Score || 0),
-      late: Number(row.late || row.Late || 0),
-      duplicate: Number(row.duplicate || row.Duplicate || 0)
-    })).filter(row => row.course !== "Unknown");
-
     const prompt = `
 You are an academic integrity analyst.
-
-Analyze this dataset:
-${JSON.stringify(cleanData)}
+Analyze this dataset of ${data.length} records:
+${JSON.stringify(data.slice(0, 50))} ${data.length > 50 ? '... (truncated for context)' : ''}
 
 Detect:
-- Cheating patterns
-- Duplicate scores
-- Late submissions
-- Risk levels (Low/Medium/High)
+- Specific cheating patterns across courses
+- Correlation between late submissions and duplicate scores
+- High-risk clusters
+- Strategic recommendations for faculty
 
-Give clear explanation and specific course insights.
+Provide a professional, executive-level summary.
 `;
 
     try {
-      // Sending both data and the custom prompt
-      const res = await axios.post(`${API_URL}/analyze`, { data: cleanData, prompt });
+      const res = await axios.post(`${API_URL}/analyze`, { data, prompt });
       setAiInsights(res.data.insights);
     } catch (err) {
       console.error(err);
-      setAiInsights("⚠️ Analysis Failed (Offline Mode fallback)\n\nDataset received but AI engine unreachable.\nDetected " + cleanData.length + " records.\n\nSummary:\n- Avg Score: " + (cleanData.reduce((a,b)=>a+b.score,0)/cleanData.length).toFixed(1) + "%\n- High Risk Flagged: " + cleanData.filter(r=>r.duplicate > 0).length);
+      setAiInsights("⚠️ AI Engine Offline. Dynamic analysis of " + data.length + " records performed locally. High-risk patterns detected in " + (data.filter(r => r.risk === 'High').length) + " course segments.");
     }
     setLoadingAI(false);
   };
@@ -352,7 +443,7 @@ Give clear explanation and specific course insights.
                 <input type="file" className="hidden" onChange={handleCSVUpload} accept=".csv" />
              </label>
              {csvData && (
-                <button onClick={handleCSVAnalysis} className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-blue-600/80 border border-blue-500/50 rounded-lg hover:bg-blue-500 transition-colors shadow-[0_0_15px_rgba(59,130,246,0.2)]">
+                <button onClick={() => handleCSVAnalysis()} className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-blue-600/80 border border-blue-500/50 rounded-lg hover:bg-blue-500 transition-colors shadow-[0_0_15px_rgba(59,130,246,0.2)]">
                   Analyze Data
                 </button>
              )}
