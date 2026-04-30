@@ -84,19 +84,10 @@ export default function App() {
   const [prediction, setPrediction] = useState("");
   const [activeTab, setActiveTab] = useState("Overview");
   const [activePage, setActivePage] = useState("Dashboard");
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-
-  // Check auth on mount
-  useEffect(() => {
-    const user = localStorage.getItem("user");
-    if (user) {
-      setIsAuthenticated(true);
-    }
-  }, []);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   const handleLogout = () => {
-    localStorage.removeItem("user");
-    setIsAuthenticated(false);
+    setIsLoggedIn(false);
   };
 
   // Initial Data Fetch
@@ -239,8 +230,8 @@ export default function App() {
     recognition.start();
   };
 
-  if (!isAuthenticated) {
-    return <Login onLogin={() => setIsAuthenticated(true)} />;
+  if (!isLoggedIn) {
+    return <Login onLogin={() => setIsLoggedIn(true)} />;
   }
 
   if (!statsData || courses.length === 0 || !selectedCourse || !details) {
