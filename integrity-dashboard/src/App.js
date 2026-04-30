@@ -273,6 +273,10 @@ export default function App() {
         setCourses(newCourses);
         setSelectedCourse(newCourses[0]);
         setCsvData(cleanData);
+        setActivePage('Dashboard'); // Force view to dashboard
+        
+        console.log("Dashboard Updated with new stats:", { avgRisk, highRisk, mediumRisk, lowRisk, totalStudents });
+        alert(`Successfully processed ${totalStudents} records across ${newCourses.length} courses!`);
 
         // 4. Trigger AI Analysis automatically
         handleCSVAnalysis(cleanData);
